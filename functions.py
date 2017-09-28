@@ -13,8 +13,8 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def lprint(msg):
-	log.log(45, msg)
+def lprint(msg, loglevel=21):
+	log.log(loglevel, msg)
 	print (msg)
 	
 def setup_logging(

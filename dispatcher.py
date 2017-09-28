@@ -17,6 +17,7 @@ import sensors
 from bitstruct import *
 import json
 
+starttimes = [0]
 
 # Read from config
 # ------------------
@@ -116,32 +117,20 @@ d = {
         "alpha": 800,
         "beta": 1,
         "lambda": 0.005,
-        "D": 100000
+        "D": 10000
     },
     "interval": {
-        "period_update": 14,
+        "period_update": 6,
         "rate_update": 100,
-        "M": 1000,
-        "upload": 8
+        "M": 40,
+        "upload": 6
     },
-   "update_interval":{
-    "period" : 30,
-    "rate" : 200    
-   },
    "upload":{
-       "period": 10,
-       "bw": 100, 
-       "up_time": 3600, 
-       "down_time": 100,
        "max_rate": 1000    
    },
-  "choice": 3,
-  "filename": "cv2.csv",
-  "sf": 0.8,
-  "is_update": False,
-  "overhead": 1,  
-    "tx_medium": "wlan0",
-    "mqtt_broker_host": "iot.eclipse.org"
+  "overhead": 10,  
+  "tx_medium": "wlan0",
+  "mqtt_broker_host": "iot.eclipse.org"
 }
 
 sensor_conf = json.dumps(d)
@@ -150,27 +139,26 @@ c = json.loads(sensor_conf)
 map_event_to_id = {}
 for i in range(len(c["event"])):
     map_event_to_id[c["event"][i]["name"]] = i
-
-print (map_event_to_id)
+# print (map_event_to_id)
 
 TX_MEDIUM = c['tx_medium']
 MQTT_BROKER_HOSTNAME = c["mqtt_broker_host"]
-
 HOST_ECLIPSE = "iot.eclipse.org"
 HOST_IQUEUE = "iqueue.ics.uci.edu"
-
 TIMEOUT_MQTT_RETRY = 10
 
 
 # Setup Logging
 # ---------------
-setup_logging()
-log = logging.getLogger("<Dispatcher>")
-#logging.disable(logging.CRITICAL)  # uncomment this to disable all logging
-logging.disable(logging.INFO)
+#~ setup_logging()
+#~ log = logging.getLogger("<Dispatcher>")
+#~ #logging.disable(logging.CRITICAL)  # uncomment this to disable all logging
+#~ logging.disable(logging.INFO)
+
+
+
 # Queue Related
 # --------------
-
 def queue_print(q):
     print("Printing start.")
     queue_copy = []
@@ -285,9 +273,10 @@ def extract_queue_and_encode(q):
 def upload_a_bundle(readings_queue):
     try:
         packed = extract_queue_and_encode(readings_queue)
+        
         print ("extract successful")
         if packed==None:
-            print(EventReport("Error", "Bundle not ready yet"))
+            lprint(EventReport("Error", "Bundle not ready yet"), 40)
             return
 
         if (publish_packet_raw(bytearray(packed)) == False):
@@ -297,14 +286,13 @@ def upload_a_bundle(readings_queue):
             with open('missing.bin', 'a') as newFile:
                 newFile.write(newFileBytes)
                 newFile.write("\n")
-            print(EventReport("Missing", "publish failure recorded."))
+            lprint(EventReport("Missing", "publish failure recorded."), 40)
     except:
         traceback.print_exc()
-        print(EventReport("Error", "upload_a_bundle failed."))
+        lprint(EventReport("Error", "upload_a_bundle failed."), 40)
 
 
 def publish_packet_raw(message):
-    print(EventReport("COULD", "publish failure recorded."))
     print (message)
     try:
         #topic = "paho/test/iotBUET/bulk/"
@@ -313,18 +301,9 @@ def publish_packet_raw(message):
         return True
         #pub.single(topic+"plotly" , payload=msg, hostname=hostname, port=1883 )
     except gaierror:
-        print(EventReport("Error", "MQTT publish failed."))
+        lprint(EventReport("Error", "MQTT publish failed."), 40)
         return False
-    #~ try:
-        #~ msgs = [{'topic': "paho2/test/iotBUET/bulk_raw/", 'payload': message},
-                #~ ("paho/test/multiple", "multiple 2", 0, False)]
-        #~ pub.multiple(msgs, hostname=MQTT_BROKER_HOSTNAME)
-        
-        #~ return True
 
-    #~ except gaierror:
-        #~ print(EventReport("Error", "MQTT publish failed."))
-        #~ return False
 
 
 # Classes
@@ -335,15 +314,10 @@ class EventReport:
         self.name = name
         self.time = (time.time())
         self.msg = msg
-        if self.name == "Error":
-            log.error(self.msg)
-        elif self.name == "Info":
-            log.info(self.msg)
-        elif self.name == "Tx":
-            log.log(45, self.msg)
-
+        
     def __repr__(self):
-        return ('%s \t %-14s \t %s') % (self.get_time_str(self.time), self.name, self.msg)
+        return ('%s \t %-14s \t %s') % (round(self.time - starttimes[0],5), self.name, self.msg)
+        #return ('%s \t %-14s \t %s') % (self.get_time_str(self.time - starttime), self.name, self.msg)
 
     def get_time_str(self, a_time):
         return datetime.datetime.fromtimestamp(a_time).strftime('%H:%M:%S')
@@ -380,93 +354,8 @@ class Reading:
 
 
 
-
-class UploadHandler(Component):
-    _worker = Worker(process=True)
-
-    @handler("UploadEvent", priority=100)
-    def upload_event(self, *args, **kwargs):
-        ## args[0] is the reading queue
-        
-        "hello, I got an event"
-        print(EventReport("UploadEvent", (str(args) + ", " + str(kwargs))))
-        ustart = get_time_as_string(time.time())
-        print(EventReport("UploadEvent", "started"))
-        queue = args[0]
-        yield upload_a_bundle(queue)
-        print ("Upload successful.")
-        print(EventReport("UploadEvent", "ENDED (started at " + str(ustart) + ")"))
-        CircuitsApp.timers["upload"] = Timer(c["upload"]["period"], UploadEvent(args[0]), persist=False).register(self)
-        #yield self.fire(ReadEvent(args[0], args[1]))
-        CircuitsApp.last_uploaded = getSentByte() - CircuitsApp.startbyte
-        lprint("Uploaded\t" + str(convert_size(CircuitsApp.last_uploaded )) )
-        
-        M = c["interval"]["M"]
-        t = time.time() - CircuitsApp.starttime
-        if (M == t):
-            return
-        rate = CircuitsApp.upload_rate
-        u = CircuitsApp.last_uploaded
-        CircuitsApp.upload_rate = min((c["params"]["D"] - u) * 1.0 / (M - t), c["upload"]["max_rate"])
-        
-        # yield self.fire(ReadEvent(args[0]))
-
-
-
-
-class PeriodUpdateHandler(Component):
-##    def __init__(self, sensors, time_gap, uploader, choice):
-##        self.sensors = sensors
-##        self.interval = time_gap
-##        self.uploader = uploader
-##        self.choice = choice
-
-
-    @handler("PeriodUpdateEvent", priority=20)
-    def update(self):
-        
-        print(EventReport("PeriodUpdateEvent", "started"))
-        CircuitsApp.timers["period_update"] = Timer(c["update_interval"]["period"], PeriodUpdateEvent(CircuitsApp.readings_queue), persist=False).register(self)
-        choice = 1
-        # loss function = ln (f)        
-        if choice == 1:
-            k = len(CircuitsApp.sensors)            
-            alpha = c["params"]["alpha"]
-            beta = c["params"]["beta"]
-            rate = CircuitsApp.upload_rate
-            T = c["upload"]["period"]
-            if rate*T == alpha:
-                return
-            for i in range(0, k):
-                #ART
-                pi = max(0, 1.0 * (1/CircuitsApp.sensors[i].weight) * (CircuitsApp.sensors[i].size + c["overhead"]) * beta * T / (rate * T - alpha))
-                CircuitsApp.sensors[i].period = pi        
-    
-
-#~ class RateUpdateHandler(Component):
-    #~ @handler("RateUpdateEvent", priority=20)
-    #~ def rate_update_event(self, *args, **kwargs):
-        #~ starttime = time.time()
-        #~ print(EventReport("RateUpdateEvent", "started"))
-        #~ yield self.call()
-        #~ endtime = time.time()
-        #~ print(EventReport("RateUpdateEvent", "ended"))
-
-    #~ def call(self):
-        #~ M = c["params"]["M"]
-        #~ t = time.time() - CircuitsApp.starttime
-        #~ if (M == t):
-            #~ return
-        #~ rate = CircuitsApp.upload_rate
-        #~ u = CircuitsApp.last_uploaded
-        #~ CircuitsApp.upload_rate = min((c["params"]["D"] - u) * 1.0 / (M - t), c["params"]["max_rate"])
-        
-        #~ #insufficient budget
-        #~ if(self.uploader.upload_rate < 0):
-            #~ print ("Negative upload rate")
-        #~ # MRH : max rate k exceed kora jabe na. naile dekha jabe second e 50000 byte pathano jay, sheta korar jonno sampling freq almost infinity nite hobe... sheta korle to baash
-        #~ sim.add_event(sim.simclock + self.interval, self)
-
+# Event Handlers
+# ---------------
 
 class ReadHandler(Component):
     def read_and_queue(self, sensor, readings_queue):
@@ -488,41 +377,94 @@ class ReadHandler(Component):
                 print ("DUSTTTT", reading)
                 print (reading)
         print ("From read handler")
-        print(readings_queue.qsize())
+        lprint(EventReport("QueueSize", readings_queue.qsize()))
 
-    @handler("ReadEvent", priority=20)
-    def read_event(self, *args, **kwargs):
-        starttime = time.time()
-        # print (time_of_now(), " :: ", args, kwargs)
-        print(EventReport("ReadEvent", "started"))
+    @handler("ReadEvent", priority=10)
+    def read_event(self, *args, **kwargs): 
         yield self.read_and_queue(args[0], args[1])
-        endtime = time.time()
-        print(EventReport("ReadEvent", "ended"))
         s1 = args[0]
         q = args[1]
+        lprint(EventReport(s1.name, "read complete."))
         CircuitsApp.timers["sense"] = Timer(s1.period, ReadEvent(s1, q), persist=False).register(self)
 
-        # print (endtime-starttime)
 
+
+class UploadHandler(Component):      
+    @handler("UploadEvent", priority=50)
+    def upload_event(self, *args, **kwargs):
+        ## args[0] is the reading queue    
+        "hello, I got an event"
+        print(EventReport("UploadEvent", (str(args) + ", " + str(kwargs))))
+        ustart = get_time_as_string(time.time())
+        lprint(EventReport("UploadEvent", "started"))
+        queue = args[0]
+        yield self.call(task(upload_a_bundle(queue)))
+        print ("Upload successful.")
+        lprint(EventReport("UploadEvent", "ENDED"))
+        CircuitsApp.timers["upload"] = Timer(c["interval"]["upload"], UploadEvent(args[0]), persist=False).register(self)
+        #yield self.fire(ReadEvent(args[0], args[1]))
+        CircuitsApp.last_uploaded = getSentByte() - CircuitsApp.startbyte
+        lprint(EventReport("Uploaded", str(convert_size(CircuitsApp.last_uploaded))), 45) 
+        M = c["interval"]["M"]
+        t = time.time() - CircuitsApp.starttime
+        if (M == t):
+            return
+        rate = CircuitsApp.upload_rate
+        u = CircuitsApp.last_uploaded
+        CircuitsApp.upload_rate = min((c["params"]["D"] - u) * 1.0 / (M - t), c["upload"]["max_rate"])
+       
+
+
+class PeriodUpdateHandler(Component):
+    @handler("PeriodUpdateEvent", priority=20)
+    def update(self, *args, **kwargs):        
+        print(EventReport("PeriodUpdateEvent", "started"))
+        CircuitsApp.timers["period_update"] = Timer(c["interval"]["period_update"], PeriodUpdateEvent(), persist=False).register(self)
+        choice = 1
+        # loss function = ln (f)        
+        if choice == 1:
+            k = len(CircuitsApp.sensors)            
+            alpha = c["params"]["alpha"]
+            beta = c["params"]["beta"]
+            rate = CircuitsApp.upload_rate
+            T = c["interval"]["upload"]
+            if rate*T == alpha:
+                return
+            for i in range(0, k):
+                #ART
+                pi = max(0, 1.0 * (1/CircuitsApp.sensors[i].weight) * (CircuitsApp.sensors[i].size + c["overhead"]) * beta * T / (rate * T - alpha))
+                CircuitsApp.sensors[i].period = pi        
+    
+class EndHandler(Component):
+    @handler("EndEvent", priority=40)
+    def end_event(self, *args, **kwargs):
+        lprint(EventReport("EndEvent", "started"))
+        CircuitsApp.h1.unregister()
+        CircuitsApp.h2.unregister()
+        CircuitsApp.h3.unregister()
+        lprint("Utilization\t" + str(CircuitsApp.last_uploaded*100.0/c["params"]["D"]) )
+        CircuitsApp.unregister()
+        
 
 
 class ReadEvent(Event):
     """read"""
 class UploadEvent(Event):
     """upload: args[0]: self.readings_queue"""
-class RateUpdateEvent(Event):
-    """upload"""
 class PeriodUpdateEvent(Event):
     """upload"""
+class EndEvent(Event):
+    """end"""
 
 
 class App(Component):
     h1 = UploadHandler()
     h2 = ReadHandler()
     h3 = PeriodUpdateHandler()
+    h4 = EndHandler()
     #~ h4 = RateUpdateHandler()
 
-	
+    isEnd = False
     readings_queue = Queue.Queue()
     bought_data = c["params"]["D"]
     end_time = c["interval"]["M"]
@@ -537,8 +479,9 @@ class App(Component):
     endtime = 0
     timers = {}
 
-    def init_scene(self):
+    def init_scene(self):		
         self.starttime = time.time()
+        starttimes[0] =  self.starttime
         lprint(EventReport("Info", "Init Scene"))
         self.sensors = []
         num_sensors = len(c["sensor"])
@@ -560,8 +503,9 @@ class App(Component):
             s1 = self.sensors[i]
             CircuitsApp.timers["sense"] = Timer(s1.period, ReadEvent(s1, self.readings_queue), persist=False).register(self)
 
-        CircuitsApp.timers["upload"] = Timer(c["interval"]["upload"], UploadEvent(self.readings_queue), persist=False).register(self)
-        CircuitsApp.timers["period_update"] = Timer(c["update_interval"]["period"], PeriodUpdateEvent(self.readings_queue), persist=False).register(self)
+        CircuitsApp.timers["upload"] = Timer(c["interval"]["upload"], UploadEvent(self.readings_queue), persist=False, process=True).register(self)
+        CircuitsApp.timers["period_update"] = Timer(c["interval"]["period_update"], PeriodUpdateEvent(), persist=False).register(self)
+        CircuitsApp.timers["end"] = Timer(c["interval"]["M"], EndEvent(), persist=False).register(self)
         #CircuitsApp.timers["rate_update"] = Timer(c["update_interval"]["rate"], RateUpdateEvent(self.readings_queue), persist=False).register(self)
 
     def started(self, component):

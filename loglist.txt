@@ -1,0 +1,30 @@
+CRITICAL 	50
+ERROR 	40
+WARNING 	30
+INFO 	20
+DEBUG 	10
+NOTSET 	0
+
+
+class App(Component):
+
+    def started(self, *args, **kwargs):
+        self.worker = Worker(process=True, workers=5)
+        self.worker.register(self)
+
+        events = []
+        for i in range(3):
+            e = task(do_thing, i)
+            events.append(e)
+            self.fire(e, self.worker)
+
+        for e in events:
+            print("waiting for %s to finish" % str(e))
+            yield self.wait(e)
+            print("%s finished" % str(e))
+
+# Start and "run" the system.
+app = App()
+Debugger().register(app)
+app.run()
+
