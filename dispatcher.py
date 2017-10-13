@@ -1,6 +1,5 @@
 # !/usr/bin/env python
 from __future__ import print_function
-#import gps.gpsdaemon
 import traceback
 import Queue
 import paho.mqtt.client as mqttc
@@ -15,6 +14,12 @@ import sys
 from functions import *
 from trace_generator import *
 from pdb import set_trace as BP
+
+#uncomment in pi
+import gps.gpsdaemon
+import sensors
+###
+
 
 MM = sys.argv[1] #input filename
 DD = sys.argv[2] #output filename	
@@ -84,7 +89,7 @@ d = {
 			"readlatency": 0.6,
 			"period": 8.0,
 			"weight": 10,
-			"pin": 1,
+			"pin": 17,
 			"trace": "data_humidity_taiwan.csv"
 		},
 		{
@@ -93,7 +98,7 @@ d = {
 			"readlatency": 0.6,
 			"period": 8.0,
 			"weight": 10,
-			"pin": 1,
+			"pin": 17,
 			"trace": "data_temp_taiwan.csv"
 		},
 		{
@@ -101,7 +106,7 @@ d = {
 			"size": 10,
 			"readlatency": 0.6,
 			"period": 4.0,
-			"pin": 6,
+			"pin": 2,
 			"weight": 3,
 			"calib": 2,
 			"trace": "1.csv"
@@ -111,7 +116,7 @@ d = {
 			"size": 10,
 			"readlatency": 0.6,
 			"period": 4.0,
-			"pin": 7,
+			"pin": 3,
 			"weight": 3,
 			"calib": 3,
 			"trace": "1.csv"
@@ -121,7 +126,7 @@ d = {
 			"size": 10,
 			"readlatency": 0.6,
 			"period": 4.0,
-			"pin": 8,
+			"pin": 1,
 			"weight": 3,
 			"calib": 4,
 			"trace": "1.csv"
@@ -132,7 +137,7 @@ d = {
 			"readlatency": 0.6,
 			"period": 10.0,
 			"weight": 10,
-			"pin": [5, 18],
+			"pin": [0, 17],
 			"trace": "data_dust_taiwan.csv"
 		}
 	],
@@ -339,7 +344,8 @@ def upload_a_bundle(readings_queue):
 
 
 def publish_packet_raw(message):
-	print (message)
+	#print (message)
+        print ("PUBLISHING...")
 	try:
 		#topic = "paho/test/iotBUET/bulk/"
 		topic = "enviroscale/encoded/74da382afd91/"
@@ -397,8 +403,9 @@ class Reading:
 
 		#return str(self.event_id)
 	def tuple(self):
-		#lat, lon, alt = gps.gpsdaemon.read()
-		lat, lon, alt = (0,0,0)
+                # uncomment in pi
+		lat, lon, alt = gps.gpsdaemon.read()
+		#lat, lon, alt = (0,0,0)
 		return (self.event_id, self.value, int(self.time), lat, lon, alt)
 
 
@@ -411,10 +418,14 @@ class ReadHandler(Component):
 		sensor_name = c["sensor"][sensor.id]["name"]
 		### value = sensors.read(sensor_name, sensor.pin)
 		event_name = c["event"][sensor.id]["name"]
+                pins =  c["sensor"][sensor.id]["pin"]
+
+                # uncomment in pi
+                value0, value1 = sensors.read(sensor_name, sensor.pin)
 		
 		#if event_name == "temperature":
-		value0 = CircuitsApp.sensors[sensor.id].trace.get_value(time.time() - CircuitsApp.starttime)
-		value1 = CircuitsApp.sensors[sensor.id].trace.get_value(time.time() - CircuitsApp.starttime)
+		#value0 = CircuitsApp.sensors[sensor.id].trace.get_value(time.time() - CircuitsApp.starttime)
+		#value1 = CircuitsApp.sensors[sensor.id].trace.get_value(time.time() - CircuitsApp.starttime)
 		value = [value0, value1]
 		
 		print (value)

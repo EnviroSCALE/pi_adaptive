@@ -7,13 +7,15 @@ class TraceDataGenerator():
     # array[0] = time difference delT, array[1..5000] => data is presented at delT interval        
     '''
     def __init__(self, filename, filepath="trace_files/"):
-        array_in = np.genfromtxt(filepath+filename, delimiter='')
-        self.array = array_in[1:]
-        self.delT = array_in[0]  #time interval data were taken
-        self.numData = self.array.shape[0] # 5000
-        self.maxTime = self.delT * self.numData - 1
-        self.minTime = 0
- 
+        try:
+		array_in = np.genfromtxt(filepath+filename, delimiter='')
+		self.array = array_in[1:]
+        	self.delT = array_in[0]  #time interval data were taken
+        	self.numData = self.array.shape[0] # 5000
+        	self.maxTime = self.delT * self.numData - 1
+        	self.minTime = 0
+	except:
+		print ("Trace error") 
     def get_data_at_t (self, t):
         '''
         t: time point
